@@ -12,7 +12,7 @@ Está pensado para operarse en un evento real: cada sala es independiente, el au
 
 Repositorio: [URL]
 Demo: [URL del video]
-Autor: [tu nombre completo] (proyecto individual, co-creado con Claude, de Anthropic)
+Autor: Matias Ezequiel Guido (proyecto individual, co-creado con Claude, de Anthropic)
 
 ## Guion de demo (3 a 3 minutos y medio)
 

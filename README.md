@@ -6,7 +6,7 @@ Vozviva toma el audio de cada escenario y publica subtítulos en tiempo real en 
 
 Licencia: MIT (aprobada por la Open Source Initiative).
 
-Autor: [tu nombre completo]. Proyecto individual presentado a la Vibeathon de Nerdearla 2026, co-creado con Claude, modelo de IA de Anthropic.
+Autor: Matias Ezequiel Guido. Proyecto individual presentado a la Vibeathon de Nerdearla 2026, co-creado con Claude, modelo de IA de Anthropic.
 
 Cómo responde a cada criterio de evaluación de la Vibeathon (calidad, latencia, escalabilidad, despliegue y operación, innovación): [docs/CRITERIOS.md](docs/CRITERIOS.md).
 
