@@ -1,0 +1,15 @@
+# Demo sin API key: 6 salas con frases de ejemplo. `python -m vozviva serve -c config.demo.yaml`
+backend: mock
+translator: none
+targets: [es, pt]
+reverse_target: en
+caster_token: demo
+sessions:
+  - {id: auditorio, name: Auditorio principal, description: Keynotes en inglés, source_lang: en, input: caster}
+  - {id: sala-2, name: Sala 2, description: Charlas técnicas en español, source_lang: es, input: caster}
+  - {id: sala-3, name: Sala 3, description: Seguridad, source_lang: en, input: caster}
+  - {id: sala-4, name: Sala 4, description: Datos e IA, source_lang: en, input: caster}
+  - {id: sala-5, name: Sala 5, description: Comunidad, source_lang: es, input: caster}
+  - {id: taller, name: Taller, description: Idioma variable, source_lang: auto, input: caster}
+easy_read: true
+agenda: agenda.demo.yaml

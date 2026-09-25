@@ -1,0 +1,8 @@
+# Agenda de la demo: solo horas, así vale para el día en que se corra.
+talks:
+  - {id: obs, session: auditorio, start: "00:00", end: "12:00", title: "Observabilidad sin humo: medir antes de optimizar", speakers: [Ana Pérez], abstract: "Cómo usamos OpenTelemetry, Prometheus y Grafana para encontrar la causa de las caídas en sistemas distribuidos.", glossary: [SLO, SLI]}
+  - {id: obs2, session: auditorio, start: "12:00", end: "23:59", title: "Observabilidad sin humo (segunda función)", speakers: [Ana Pérez], abstract: "Repetición de la charla de la mañana con OpenTelemetry y Grafana."}
+  - {id: k8s, session: sala-2, start: "00:00", end: "23:59", title: "Del monolito a Kubernetes sin cortar el servicio", speakers: [Juan Gómez, Carla Ruiz], abstract: "Migramos un monolito en Java a Kubernetes con despliegues canary y pruebas de carga automatizadas."}
+  - {id: sec, session: sala-3, start: "00:00", end: "23:59", title: "Seguridad en la cadena de suministro de software", speakers: [Lucía Fernández], abstract: "SBOM, firmas con Sigstore y cómo auditar dependencias de npm y PyPI."}
+  - {id: ia, session: sala-4, start: "00:00", end: "23:59", title: "RAG en producción: lo que no te cuentan", speakers: [Martín Díaz], abstract: "Evaluación, costos y latencia de sistemas RAG con Gemini y bases vectoriales."}
+  - {id: com, session: sala-5, start: "00:00", end: "23:59", title: "Cómo sostener una comunidad open source", speakers: [Sofía López], abstract: "Gobernanza, código de conducta y financiamiento de proyectos libres en Latinoamérica."}

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carteles para las salas</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css">
+<style>
+  /* Los carteles se imprimen siempre en claro, con tinta negra. */
+  .controls { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+  .controls .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+  .controls .field { flex: 1 1 240px; margin: 8px 0; }
+  .posters { display: flex; flex-direction: column; align-items: center; gap: 32px; padding: 0 16px 48px; }
+  .poster {
+    width: 210mm; min-height: 297mm; background: #fff; color: #111; padding: 18mm 16mm;
+    display: flex; flex-direction: column; box-shadow: 0 0 0 1px #ccc; font-family: var(--font);
+  }
+  .poster .kicker { font-size: 20pt; margin: 0; color: #333; }
+  .poster h2 { font-size: 54pt; line-height: 1.02; margin: 4mm 0 2mm; letter-spacing: -0.01em; }
+  .poster .desc { font-size: 18pt; margin: 0; color: #333; }
+  .poster .langs { font-size: 20pt; font-weight: 700; margin: 8mm 0 0; }
+  .poster .qr { margin: 10mm auto 4mm; width: 120mm; height: 120mm; }
+  .poster .qr img { width: 100%; height: 100%; display: block; }
+  .poster .url { text-align: center; font-size: 15pt; margin: 0 0 8mm; word-break: break-all; }
+  .poster ol { font-size: 17pt; line-height: 1.4; margin: auto 0 0; padding-left: 1.2em; }
+  .poster .foot { font-size: 11pt; color: #555; margin-top: 8mm; }
+  @media screen and (max-width: 820px) { .poster { transform: scale(.45); transform-origin: top center; margin-bottom: -160mm; } }
+  @media print {
+    @page { size: A4; margin: 0; }
+    body { background: #fff; }
+    .controls, .bar { display: none; }
+    .posters { padding: 0; gap: 0; }
+    .poster { box-shadow: none; break-after: page; transform: none; margin: 0; }
+  }
+</style>
+</head>
+<body>
+<header class="bar"><a class="brand" href="/">Vozviva<span class="dot">.</span></a><span class="spacer"></span><a href="/ops">Estado de salas</a></header>
+<section class="controls">
+  <h1>Carteles para las salas</h1>
+  <p>Un cartel A4 por sala, con un código QR que abre los subtítulos de esa sala. Revisá la dirección antes de imprimir: tiene que ser la que va a usar el público.</p>
+  <div class="row">
+    <div class="field"><label for="base">Dirección pública</label><input id="base" type="url" placeholder="https://subtitulos.tu-evento.org"></div>
+    <div class="field"><label for="only">Salas</label><select id="only"><option value="">Todas</option></select></div>
+    <button class="primary" id="print">Imprimir carteles</button>
+  </div>
+</section>
+<main class="posters" id="posters"></main>
+<script>
+(() => {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const params = new URLSearchParams(location.search);
+  const $base = document.getElementById("base"), $only = document.getElementById("only");
+  $base.value = params.get("base") || location.origin;
+  let sessions = [];
+
+  function render() {
+    const base = $base.value.replace(/\/+$/, "");
+    const list = sessions.filter((s) => !$only.value || s.id === $only.value);
+    document.getElementById("posters").innerHTML = list.map((s) => {
+      const langs = s.channels.map((c) => c.label.replace(/^Original \((.*)\)$/, "$1 (original)")).join(" · ");
+      const url = `${base}/?s=${encodeURIComponent(s.id)}`;
+      return `<article class="poster" aria-label="Cartel de ${esc(s.name)}">
+        <p class="kicker">Subtítulos en vivo</p>
+        <h2>${esc(s.name)}</h2>
+        ${s.description ? `<p class="desc">${esc(s.description)}</p>` : ""}
+        <p class="langs">${esc(langs)}</p>
+        <div class="qr"><img alt="Código QR para abrir los subtítulos de ${esc(s.name)}"
+          src="/api/sessions/${encodeURIComponent(s.id)}/qr.svg?base=${encodeURIComponent(base)}"></div>
+        <p class="url">${esc(url)}</p>
+        <ol>
+          <li>Apuntá la cámara del celular al código.</li>
+          <li>Elegí el idioma en el que querés leer.</li>
+          <li>Tocá «Escuchar» si preferís oír el texto en voz alta.</li>
+        </ol>
+        <p class="foot">Texto generado automáticamente: puede tener errores. Hecho con Vozviva, software libre.</p>
+      </article>`;
+    }).join("");
+  }
+
+  fetch("/api/sessions").then((r) => r.json()).then((list) => {
+    sessions = list;
+    $only.innerHTML = `<option value="">Todas</option>` + list.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("");
+    if (params.get("s")) $only.value = params.get("s");
+    render();
+  });
+  $base.addEventListener("change", render);
+  $only.addEventListener("change", render);
+  document.getElementById("print").onclick = () => window.print();
+})();
+</script>
+</body>
+</html>

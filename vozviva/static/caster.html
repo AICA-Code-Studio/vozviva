@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Enviar audio de una sala</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header class="bar"><a class="brand" href="/">Vozviva<span class="dot">.</span></a><span class="spacer"></span><a href="/ops">Estado de salas</a></header>
+<main class="page">
+  <h1>Enviar audio de una sala</h1>
+  <p>Usá esta página en la computadora conectada a la salida de la consola de sonido (o a un micrófono). Mantenela abierta y enchufada durante toda la sesión.</p>
+  <div class="field"><label for="session">Sala</label><select id="session"></select></div>
+  <div class="field"><label for="token">Clave de envío</label><input id="token" type="password" autocomplete="off" placeholder="La define quien opera el servidor"></div>
+  <div class="field"><label for="device">Entrada de audio</label><select id="device"><option value="">Predeterminada del sistema</option></select></div>
+  <button class="primary" id="go">Empezar a enviar</button>
+  <div class="meter" aria-hidden="true"><div id="meter"></div></div>
+  <p class="msg" id="msg" role="status">Sin enviar.</p>
+</main>
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const WORKLET = `
+    class Downsampler extends AudioWorkletProcessor {
+      constructor() { super(); this.ratio = sampleRate / 16000; this.acc = 0; this.sum = 0; this.cnt = 0;
+        this.buf = new Int16Array(1600); this.n = 0; }
+      process(inputs) {
+        const ch = inputs[0] && inputs[0][0];
+        if (!ch) return true;
+        for (let k = 0; k < ch.length; k++) {
+          this.sum += ch[k]; this.cnt++; this.acc += 1;
+          if (this.acc >= this.ratio) {
+            this.acc -= this.ratio;
+            let s = this.sum / this.cnt; this.sum = 0; this.cnt = 0;
+            s = Math.max(-1, Math.min(1, s));
+            this.buf[this.n++] = s < 0 ? s * 0x8000 : s * 0x7fff;
+            if (this.n === this.buf.length) { this.port.postMessage(this.buf.buffer.slice(0)); this.n = 0; }
+          }
+        }
+        return true;
+      }
+    }
+    registerProcessor("downsampler", Downsampler);`;
+
+  let ctx = null, stream = null, ws = null, running = false, sent = 0, backlog = [], retry = 1000, wake = null;
+
+  const params = new URLSearchParams(location.search);
+  try { $("token").value = params.get("token") || sessionStorage.getItem("vv-token") || ""; } catch {}
+
+  fetch("/api/sessions").then((r) => r.json()).then((list) => {
+    $("session").innerHTML = list.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
+    if (params.get("s")) $("session").value = params.get("s");
+  }).catch(() => msg("No se pudo cargar la lista de salas.", true));
+
+  async function listDevices() {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audioinput");
+    const cur = $("device").value;
+    $("device").innerHTML = `<option value="">Predeterminada del sistema</option>` +
+      devs.map((d, i) => `<option value="${d.deviceId}">${d.label || "Entrada " + (i + 1)}</option>`).join("");
+    $("device").value = cur;
+  }
+  if (navigator.mediaDevices) listDevices();
+
+  function msg(t, err) { $("msg").textContent = t; $("msg").classList.toggle("err", !!err); }
+
+  function openSocket() {
+    const sid = $("session").value, token = $("token").value;
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    ws = new WebSocket(`${proto}://${location.host}/ingest/${encodeURIComponent(sid)}?token=${encodeURIComponent(token)}`);
+    ws.binaryType = "arraybuffer";
+    ws.onopen = () => { retry = 1000; while (backlog.length) ws.send(backlog.shift()); msg("Enviando audio. Dejá esta pestaña abierta."); };
+    ws.onclose = (e) => {
+      if (!running) return;
+      const fatal = { 4401: "La clave de envío no es correcta.", 4404: "Esta sala no está configurada para recibir audio desde el navegador.", 4409: "Otra computadora empezó a enviar audio de esta sala." }[e.code];
+      if (fatal) { stop(); return msg(fatal, true); }
+      msg(`Se cortó la conexión. Reintentando en ${Math.round(retry / 1000)} s…`, true);
+      setTimeout(() => running && openSocket(), retry);
+      retry = Math.min(retry * 2, 15000);
+    };
+  }
+
+  async function start() {
+    if (!window.isSecureContext) return msg("El navegador solo permite usar el micrófono en https:// o en localhost.", true);
+    try { sessionStorage.setItem("vv-token", $("token").value); } catch {}
+    const deviceId = $("device").value;
+    stream = await navigator.mediaDevices.getUserMedia({ audio: {
+      deviceId: deviceId ? { exact: deviceId } : undefined, channelCount: 1,
+      echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    listDevices();
+    ctx = new AudioContext();
+    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" })));
+    const node = new AudioWorkletNode(ctx, "downsampler");
+    node.port.onmessage = (e) => {
+      const pcm = new Int16Array(e.data);
+      let sum = 0; for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i];
+      const db = 20 * Math.log10(Math.sqrt(sum / pcm.length) / 32768 + 1e-9);
+      $("meter").style.width = Math.max(0, Math.min(100, (db + 60) * 100 / 60)) + "%";
+      if (ws && ws.readyState === 1) { ws.send(e.data); sent++; }
+      else { backlog.push(e.data); if (backlog.length > 50) backlog.shift(); }
+    };
+    ctx.createMediaStreamSource(stream).connect(node);
+    running = true;
+    openSocket();
+    $("go").textContent = "Dejar de enviar"; $("go").classList.add("stop");
+    try { wake = await navigator.wakeLock?.request("screen"); } catch {}
+  }
+
+  function stop() {
+    running = false;
+    try { ws && ws.close(); } catch {}
+    try { stream && stream.getTracks().forEach((t) => t.stop()); } catch {}
+    try { ctx && ctx.close(); } catch {}
+    try { wake && wake.release(); } catch {}
+    ws = stream = ctx = wake = null; backlog = [];
+    $("meter").style.width = "0";
+    $("go").textContent = "Empezar a enviar"; $("go").classList.remove("stop");
+    msg("Sin enviar.");
+  }
+
+  $("go").onclick = () => running ? stop() : start().catch((e) => { stop(); msg("No se pudo abrir la entrada de audio: " + e.message, true); });
+})();
+</script>
+</body>
+</html>

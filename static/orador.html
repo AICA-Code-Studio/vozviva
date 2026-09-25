@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Monitor del orador</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  /* Se lee a varios metros, desde el escenario. En "buen ritmo" no llama la atención;
+     solo pide atención cuando hay que bajar la velocidad. */
+  :root { --bg: #151632; --text: #eef0ff; --muted: #9a9cc4; font-family: "Atkinson Hyperlegible", system-ui, sans-serif; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+  body { transition: background-color .6s; }
+  body[data-state="warn"] { --bg: #ffb23f; --text: #1b1300; --muted: #4a3710; }
+  body[data-state="alert"] { --bg: #e5484d; --text: #fff; --muted: #ffe1e1; }
+  @media (prefers-reduced-motion: reduce) { body { transition: none; } }
+  main { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; padding: 4vh 5vw calc(4vh + env(safe-area-inset-bottom, 0px)); }
+  .top { display: flex; justify-content: space-between; gap: 2vw; font-size: clamp(16px, 2.6vw, 34px); color: var(--muted); }
+  .state { flex: 1; display: flex; align-items: center; font-weight: 700; line-height: 1.02; letter-spacing: -0.02em; font-size: clamp(44px, 11vw, 190px); }
+  body[data-state="ok"] .state, body[data-state="idle"] .state { font-size: clamp(32px, 6vw, 96px); color: var(--muted); }
+  .nums { display: flex; gap: 6vw; flex-wrap: wrap; font-size: clamp(18px, 3vw, 44px); }
+  .nums strong { display: block; font-size: 1.7em; line-height: 1.1; }
+  .nums span { color: var(--muted); }
+  .last { margin-top: 3vh; font-size: clamp(16px, 2.4vw, 32px); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pick { padding: 24px; font-size: 22px; }
+  .pick a { display: block; color: var(--text); padding: 12px 0; }
+  button.fs { position: fixed; right: 16px; bottom: 16px; font: inherit; font-size: 16px; padding: 10px 14px; border-radius: 10px;
+    border: 1px solid var(--muted); background: transparent; color: var(--text); cursor: pointer; }
+  :fullscreen button.fs { display: none; }
+</style>
+</head>
+<body data-state="idle">
+<main id="main"></main>
+<button class="fs" id="fs">Pantalla completa</button>
+<script>
+(() => {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const sid = new URLSearchParams(location.search).get("s");
+  const $main = document.getElementById("main");
+  document.getElementById("fs").onclick = () => document.documentElement.requestFullscreen?.();
+
+  const T = {
+    es: { ok: "Buen ritmo", warn: "Un poco más despacio", alert: "Más despacio, por favor", idle: "Esperando que hables",
+          wpm: "palabras por minuto", lag: "de demora en subtítulos", left: (m) => `Quedan ${m} min`, over: "Tiempo cumplido",
+          measuring: "midiendo…", fs: "Pantalla completa" },
+    en: { ok: "Good pace", warn: "A little slower", alert: "Slow down, please", idle: "Waiting for you to speak",
+          wpm: "words per minute", lag: "caption delay", left: (m) => `${m} min left`, over: "Time is up",
+          measuring: "measuring…", fs: "Full screen" },
+  };
+
+  if (!sid) {
+    fetch("/api/sessions").then((r) => r.json()).then((list) => {
+      $main.innerHTML = `<div class="pick"><p>Elegí la sala de este monitor:</p>${list.map((s) =>
+        `<a href="?s=${encodeURIComponent(s.id)}">${esc(s.name)}</a>`).join("")}</div>`;
+    });
+    return;
+  }
+
+  let shown = "idle", candidate = null, wake = null;
+  const requestWake = async () => { try { wake = await navigator.wakeLock?.request("screen"); } catch {} };
+  requestWake();
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && requestWake());
+
+  async function tick() {
+    try {
+      const d = await (await fetch(`/api/sessions/${encodeURIComponent(sid)}/pace`, { cache: "no-store" })).json();
+      const t = d.lang === "es" ? T.es : T.en;
+      document.documentElement.lang = d.lang === "es" ? "es" : "en";
+      document.getElementById("fs").textContent = t.fs;
+      // El estado cambia recién si se repite dos veces seguidas: evita parpadeos.
+      if (d.state !== shown) { if (candidate === d.state) { shown = d.state; candidate = null; } else candidate = d.state; }
+      else candidate = null;
+      document.body.dataset.state = shown;
+      let left = "";
+      if (d.talk) {
+        const mins = Math.ceil((new Date(d.talk.end) - Date.now()) / 60000);
+        left = mins > 0 ? t.left(mins) : t.over;
+      }
+      const lag = d.lag_s == null ? "—" : `${d.lag_s.toFixed(1).replace(".", d.lang === "es" ? "," : ".")} s`;
+      $main.innerHTML = `
+        <div class="top"><span>${esc(d.talk ? d.talk.title : d.name)}</span><span>${esc(left)}</span></div>
+        <div class="state" role="status" aria-live="polite">${esc(t[shown])}</div>
+        <div class="nums">
+          <div><strong>${d.wpm ?? "—"}</strong><span>${d.wpm == null && shown !== "idle" ? t.measuring : t.wpm}</span></div>
+          <div><strong>${lag}</strong><span>${t.lag}</span></div>
+        </div>
+        <div class="last">${esc(d.last_text)}</div>`;
+    } catch { /* reintenta */ }
+  }
+  tick(); setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>

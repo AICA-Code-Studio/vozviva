@@ -1,0 +1,22 @@
+# Agenda del evento. Cada charla: sala (id de la configuración), inicio, fin, título,
+# oradores, resumen del programa y términos propios. Fechas en la zona horaria de la
+# configuración (timezone). Si ponés solo la hora ("10:30"), se toma el día de hoy.
+# El archivo se relee solo si cambia: se puede corregir durante el evento.
+talks:
+  - id: apertura
+    session: auditorio
+    start: 2026-09-25 09:30
+    end: 2026-09-25 10:00
+    title: Apertura
+    speakers: [Nombre Apellido]
+
+  - id: observabilidad
+    session: auditorio
+    start: 2026-09-25 10:00
+    end: 2026-09-25 10:45
+    title: Observabilidad con OpenTelemetry
+    speakers: [Nombre Apellido]
+    abstract: >
+      Resumen tal como figura en el programa. De acá salen términos para el glosario
+      (siglas, nombres de productos) y contexto para traducir y resumir.
+    glossary: [SLO, SLI, eBPF]

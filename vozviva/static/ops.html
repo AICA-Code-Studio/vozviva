@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Estado de salas</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css">
+<style>
+  .page { max-width: 1240px; }
+  .totals { display: flex; flex-wrap: wrap; gap: 12px 32px; margin: 18px 0 22px; padding: 14px 0; border-block: 1px solid var(--line); }
+  .totals div { display: flex; flex-direction: column; }
+  .totals strong { font-size: 26px; line-height: 1.1; }
+  .totals span { color: var(--muted); font-size: 14px; }
+  td small { color: var(--muted); }
+  .warn { color: var(--danger); margin: 0 0 12px; }
+</style>
+</head>
+<body>
+<header class="bar"><a class="brand" href="/">Vozviva<span class="dot">.</span></a><span class="spacer"></span><a href="/carteles">Carteles</a>&nbsp;&nbsp;<a href="/caster">Enviar audio</a></header>
+<main class="page">
+  <h1>Estado de salas</h1>
+  <p>Se actualiza cada 2 segundos. Se marca en rojo una sala sin audio por más de 15 s, o con audio pero sin subtítulos por más de 60 s.</p>
+  <p class="warn" id="agendaWarn" hidden></p>
+  <div class="totals" id="totals"></div>
+  <div class="table-wrap"><table class="ops">
+    <thead><tr>
+      <th>Sala</th><th>Estado</th><th>Nivel</th><th>Último audio</th><th>Último subtítulo</th>
+      <th>Voz → texto<br><small>mediana / p95</small></th><th>Traducción<br><small>mediana / p95</small></th>
+      <th>Tokens<br><small>entrada / salida</small></th><th>Costo estimado</th><th>Audiencia</th><th>Errores</th>
+    </tr></thead>
+    <tbody id="rows"><tr><td colspan="11">Cargando…</td></tr></tbody>
+  </table></div>
+  <p><small>Voz → texto: desde que termina una frase en el escenario hasta que aparece su subtítulo final. Traducción: desde el subtítulo final hasta su traducción. Los tokens salen de lo que informa la API; contrastá el total con la consola de Google AI Studio. El costo solo se calcula si configurás <code>prices</code>.</small></p>
+</main>
+<script>
+(() => {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const ago = (s) => s == null ? "—" : s < 60 ? `${Math.round(s)} s` : `${Math.round(s / 60)} min`;
+  const sec = (v) => v == null ? "—" : `${v.toFixed(1)} s`;
+  const lat = (l) => !l || !l.n ? "—" : `${sec(l.p50)} / ${sec(l.p95)}<br><small>${l.n} frases</small>`;
+  const num = (n) => (n || 0).toLocaleString("es-AR");
+  const usd = (v) => v == null ? "—" : `US$ ${v.toFixed(2)}`;
+
+  async function tick() {
+    try {
+      const [st, ag] = await Promise.all([
+        fetch("/api/status", { cache: "no-store" }).then((r) => r.json()),
+        fetch("/api/agenda", { cache: "no-store" }).then((r) => r.json()),
+      ]);
+      const warn = document.getElementById("agendaWarn");
+      warn.hidden = !ag.error;
+      warn.textContent = ag.error ? `La agenda no se pudo cargar: ${ag.error}` : "";
+
+      const rows = Object.values(st);
+      let audio = 0, tin = 0, tout = 0, cost = 0, costKnown = true, viewers = 0, live = 0;
+      document.getElementById("rows").innerHTML = rows.map((s) => {
+        const noAudio = s.seconds_since_audio == null || s.seconds_since_audio > 15;
+        const stuck = !noAudio && (s.seconds_since_caption == null || s.seconds_since_caption > 60);
+        const lvl = s.level_db == null ? 0 : Math.max(0, Math.min(100, (s.level_db + 60) * 100 / 60));
+        const err = s.last_error || s.source_error || "";
+        const u = s.usage || {};
+        audio += s.audio_minutes || 0; tin += u.tokens_input || 0; tout += u.tokens_output || 0; viewers += s.viewers || 0;
+        if (!noAudio) live++;
+        if (u.cost_usd == null && (u.tokens_input || u.tokens_output)) costKnown = false; else cost += u.cost_usd || 0;
+        return `<tr>
+          <td><strong>${esc(s.id)}</strong><br><small>${esc(s.backend || "")}, ${esc(s.input || "")}</small></td>
+          <td class="${s.state === "error" ? "bad" : ""}">${esc(s.state)}</td>
+          <td><div class="meter" style="margin:4px 0;width:90px"><div style="width:${lvl}%"></div></div></td>
+          <td class="${noAudio ? "bad" : ""}">${ago(s.seconds_since_audio)}</td>
+          <td class="${stuck ? "bad" : ""}">${ago(s.seconds_since_caption)}</td>
+          <td>${lat(s.latency?.speech_to_text)}</td>
+          <td>${lat(s.latency?.translation)}</td>
+          <td>${num(u.tokens_input)} / ${num(u.tokens_output)}</td>
+          <td>${usd(u.cost_usd)}</td>
+          <td>${s.viewers ?? 0}</td>
+          <td>${s.errors ?? 0}${err ? `<br><small class="bad">${esc(err)}</small>` : ""}</td>
+        </tr>`;
+      }).join("");
+      document.getElementById("totals").innerHTML = `
+        <div><strong>${live} de ${rows.length}</strong><span>salas con audio</span></div>
+        <div><strong>${num(viewers)}</strong><span>personas mirando</span></div>
+        <div><strong>${Math.round(audio)} min</strong><span>de audio procesado</span></div>
+        <div><strong>${num(tin + tout)}</strong><span>tokens en total</span></div>
+        <div><strong>${costKnown ? usd(cost) : "—"}</strong><span>${costKnown ? "costo estimado" : "configurá prices para estimar"}</span></div>
+        <div><strong>${audio >= 1 ? num(Math.round((tin + tout) / (audio / 60))) : "—"}</strong><span>tokens por hora de audio</span></div>
+        <div><strong>${audio >= 1 && costKnown ? usd(cost / (audio / 60)) : "—"}</strong><span>costo por sala y hora</span></div>`;
+    } catch (e) { /* reintenta */ }
+  }
+  tick(); setInterval(tick, 2000);
+})();
+</script>
+</body>
+</html>

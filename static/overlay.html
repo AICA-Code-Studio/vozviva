@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overlay de subtítulos</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@700&display=swap" rel="stylesheet">
+<style>
+  /* Para OBS / pantallas del escenario: fondo transparente, últimas líneas abajo. */
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  #box { position: absolute; left: 4vw; right: 4vw; bottom: 5vh; display: flex; flex-direction: column; align-items: center; gap: .2em;
+    font: 700 var(--size, 5vh)/1.25 "Atkinson Hyperlegible", system-ui, sans-serif; color: #fff; text-align: center; }
+  #box span { background: rgba(0, 0, 0, .72); padding: .08em .4em; border-radius: .18em; max-width: 42ch;
+    box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  #box span.partial { opacity: .85; }
+</style>
+</head>
+<body>
+<div id="box" aria-live="off"></div>
+<script>
+(() => {
+  const p = new URLSearchParams(location.search);
+  const sid = p.get("s"), ch = p.get("l") || "orig", max = Number(p.get("lines") || 2);
+  if (p.get("size")) document.documentElement.style.setProperty("--size", p.get("size"));
+  const box = document.getElementById("box");
+  const segs = new Map();
+  function render() {
+    const keys = [...segs.keys()].sort((a, b) => a - b).slice(-max);
+    box.innerHTML = "";
+    for (const k of keys) {
+      const c = segs.get(k), s = document.createElement("span");
+      s.textContent = c.text; if (!c.final) s.className = "partial"; box.appendChild(s);
+    }
+    for (const k of [...segs.keys()]) if (!keys.includes(k)) segs.delete(k);
+  }
+  if (!sid) { box.textContent = "Falta ?s=<sala>&l=<idioma>"; return; }
+  const es = new EventSource(`/api/sessions/${encodeURIComponent(sid)}/stream?channel=${encodeURIComponent(ch)}`);
+  es.addEventListener("snapshot", (e) => { JSON.parse(e.data).forEach((c) => segs.set(c.seg, c)); render(); });
+  es.onmessage = (e) => { const c = JSON.parse(e.data); const old = segs.get(c.seg);
+    if (old && old.final && !c.final) return; segs.set(c.seg, c); render(); };
+  // Si nadie habla por un rato, el overlay se limpia solo.
+  let idle; es.addEventListener("message", () => { clearTimeout(idle); idle = setTimeout(() => { segs.clear(); render(); }, 12000); });
+})();
+</script>
+</body>
+</html>

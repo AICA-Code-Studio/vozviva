@@ -1,0 +1,96 @@
+# Configuración de Vozviva. Copiá este archivo a config.yaml y ajustalo.
+# Los valores ${VAR} se toman de variables de entorno.
+
+# Reconocimiento:
+#   gemini_live            -> gemini-3.5-transcribe-live (streaming, parciales en ~tiempo real). Recomendado.
+#   gemini_live_translate  -> gemini-3.5-live-translate-preview (interpretación simultánea). Experimental.
+#   gemini_chunked         -> fragmentos por VAD + generate_content. Respaldo, más latencia.
+#   local                  -> faster-whisper + traductor local (Ollama/Gemma). Sin nube.
+#   mock                   -> frases de ejemplo, sin API key. Para probar la interfaz.
+backend: gemini_live
+
+# Traductor para los backends que solo transcriben (gemini_live, local): gemini | ollama | none
+translator: gemini
+
+# Idiomas a los que se traduce toda charla. Si la charla es en español, se agrega reverse_target.
+targets: [es, pt]
+reverse_target: en
+
+# Canal "Español fácil" (Lectura Fácil): frases cortas y vocabulario simple.
+easy_read: true
+
+gemini_api_key: ${GEMINI_API_KEY}
+model_live: gemini-3.5-transcribe-live
+model_live_translate: gemini-3.5-live-translate-preview
+model_chunked: gemini-3.5-flash-lite
+model_translate: gemini-3.5-flash-lite
+transcription_mode: SMART      # SMART limpia muletillas; VERBATIM es literal
+hybrid_vad: false              # true: cierra frases antes usando el VAD local (probar primero)
+live_rotate_s: 540             # rotar la conexión antes del límite de 10 min
+
+# Modo local
+ollama_url: http://localhost:11434
+ollama_model: gemma3:4b
+whisper_model: small
+whisper_device: auto
+
+# Términos que el reconocimiento y la traducción deben respetar (nombres, productos, siglas).
+glossary: [Nerdearla, Sysarmy, Kubernetes, OpenTelemetry, Gemini, Gemma, Konex]
+
+# Agenda: título y oradores de la charla en curso, glosario y contexto automáticos por sala.
+# agenda: agenda.yaml
+timezone: America/Argentina/Buenos_Aires
+
+# Dirección pública del servicio (para los QR de /carteles).
+# public_url: https://subtitulos.tu-evento.org
+
+# Resúmenes "¿Qué me perdí?" (por defecto usa model_translate) y cuánto se reutiliza cada uno.
+# model_summary: gemini-3.5-flash-lite
+summary_cache_s: 30
+
+# Precios en USD por millón de tokens, para el costo estimado en /ops.
+# Completalos con la página de precios vigente de Gemini; si faltan, /ops muestra solo tokens.
+prices: {}
+#  gemini-3.5-transcribe-live: {input: 0.0, output: 0.0}
+#  gemini-3.5-flash-lite: {input: 0.0, output: 0.0}
+
+# Clave para enviar audio desde /caster (mejor por variable de entorno).
+caster_token: ${VOZVIVA_CASTER_TOKEN}
+
+# Opcional: Redis para repartir salas entre varias máquinas.
+# redis_url: redis://localhost:6379/0
+
+data_dir: data
+
+sessions:
+  - id: auditorio
+    name: Auditorio principal
+    description: Keynotes en inglés
+    source_lang: en
+    input: srt://0.0.0.0:9001?mode=listener   # la consola/OBS manda audio por SRT
+
+  - id: sala-2
+    name: Sala 2
+    description: Charlas técnicas
+    source_lang: es
+    input: caster                             # una notebook manda audio desde /caster
+
+  - id: sala-3
+    name: Sala 3
+    source_lang: auto                         # idioma variable: se detecta y se traduce a es y en
+    input: rtmp://0.0.0.0:1935/live/sala3?listen=1
+
+  # Ejemplo con placa de audio USB en Linux:
+  # - id: sala-4
+  #   name: Sala 4
+  #   source_lang: en
+  #   input_format: alsa
+  #   input: hw:1,0
+
+  # Ejemplo para simular vivo con un archivo:
+  # - id: demo
+  #   name: Demo con archivo
+  #   source_lang: en
+  #   input: charla.mp3
+  #   realtime: true
+  #   loop: true
